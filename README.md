@@ -1,5 +1,9 @@
 # AI Audio Editor
 
+
+https://github.com/user-attachments/assets/7b754f91-d6ef-4545-8447-160095bffed1
+
+
 An AI-enabled, browser-based audio editor that can understand a timeline and automatically apply sound effects based on the content.
 
 Instead of manually searching for audio clips and placing them on a timeline, you can describe what should happen and let an AI agent modify the underlying project structure.
