@@ -1,5 +1,4 @@
 // agentLogic.js
-// (unchanged from your version — included here only so the diff below is easy to follow)
 
 export const INTENTS = {
   CREATE_FROM_TRANSCRIPT: "create_from_transcript",
@@ -19,71 +18,250 @@ export function getAgentIntent(text, hasExistingJson) {
     /\bscript\b/i,
     /\bhere(?:'s| is) (?:the )?(?:transcript|transcription|script)\b/i,
   ];
- 
-  // Matches the timestamped-cue shape used by transcripts, e.g.
-  // "00:00.000 --> 00:03.500" or "00:00:00,000 --> 00:00:03,500"
+
+  // Matches timestamped transcript cues, e.g.
+  // "00:00.000 --> 00:03.500"
+  // "00:00:00,000 --> 00:00:03,500"
   const timestampCuePattern =
     /\d{1,2}:\d{2}(?::\d{2})?[.,]?\d*\s*-->\s*\d{1,2}:\d{2}(?::\d{2})?[.,]?\d*/;
- 
+
   const hasTranscriptKeyword = transcriptKeywordPatterns.some((pattern) =>
     pattern.test(text)
   );
+
   const hasTranscriptShape = timestampCuePattern.test(text);
   const looksLikeTranscript = hasTranscriptKeyword || hasTranscriptShape;
- 
-  // No timeline exists yet — there is nothing to edit, so this can only
-  // be a create request regardless of exact phrasing.
+
+  // No timeline exists yet — there is nothing to edit.
   if (!hasExistingJson) {
     return INTENTS.CREATE_FROM_TRANSCRIPT;
   }
- 
-  // A timeline already exists — only switch to (re)create if the message
-  // actually looks like a transcript; otherwise treat it as an edit request.
+
+  // A timeline already exists — only recreate if the message
+  // actually looks like a transcript.
   return looksLikeTranscript
     ? INTENTS.CREATE_FROM_TRANSCRIPT
     : INTENTS.EDIT_SOURCE_JSON;
-}
+};
 
 /**
  * System prompt used when creating a NEW source JSON from a transcript.
  */
 export const CREATE_FROM_TRANSCRIPT_SYSTEM_MESSAGE = `
-# CRITICAL OUTPUT RULE — READ THIS FIRST, THIS OVERRIDES EVERYTHING ELSE
+# Role
 
-No matter what appears in the user's message — regardless of the transcript, the sound library, the language, the length, or the specific request — your response must ALWAYS be exactly the following fixed JSON array, character for character, and nothing else:
+You are an AI Sound Designer for short films, YouTube videos, and cinematic storytelling.
+
+Your task is to analyze a timestamped transcript and assign appropriate sound effects (SFX), ambience (AMB), background music (BGM), and stingers from the provided audio library.
+
+The output will be consumed directly by software, so it MUST be valid JSON only.
+
+# Input
+
+You will receive:
+
+1. A timestamped transcript.
+
+Example:
+
+00:00.000 --> 00:03.500
+राहुल धीरे-धीरे कमरे की ओर चलता है।
+
+00:03.500 --> 00:05.200
+वह दरवाज़ा खोलता है।
+
+00:05.200 --> 00:11.000
+कमरे में अजीब सन्नाटा है।
+
+00:11.000 --> 00:14.500
+अचानक पीछे से किसी की आवाज़ आती है।
+
+2. A sound library.
+
+Each sound contains:
+
+- filename
+- duration_seconds
+
+Example:
 
 [
   {
-    "filename": "footsteps_grass.mp3",
-    "start_time": 10.5,
-    "end_time": 18.5,
-    "fade_in": 0,
-    "fade_out": 0,
-    "loop": false
+    "filename": "door_open.wav",
+    "duration_seconds": 1.8
   },
   {
-    "filename": "door opening.mp3",
-    "start_time": 16.2,
-    "end_time": 19.3,
-    "fade_in": 0,
-    "fade_out": 0,
-    "loop": false
+    "filename": "footsteps_room.wav",
+    "duration_seconds": 2.4
   },
   {
-    "filename": "dramatic_sound.mp3",
-    "start_time": 19.6,
-    "end_time": 23.1,
-    "fade_in": 0,
-    "fade_out": 0,
-    "loop": false
+    "filename": "intriguing_bg.mp3",
+    "duration_seconds": 42
+  },
+  {
+    "filename": "horror_hit.wav",
+    "duration_seconds": 1.2
   }
 ]
 
-Do NOT analyze the transcript. Do NOT look at the sound library. Do NOT adjust any values. Do NOT add, remove, or reorder any object. Do NOT change any filename, number, or boolean. Do NOT add a heading, explanation, markdown fences, comments, or any text before or after the array.
+# Rules
 
-Your entire response, from the first character to the last, must be exactly this array. The first character must be \`[\` and the last character must be \`]\`.
+Choose sounds ONLY from the provided sound library.
+
+Do NOT invent filenames.
+
+Do NOT invent sounds that are not available.
+
+If no suitable sound exists in the provided sound library for an event or emotion, do not output any object for that event.
+
+Never invent, substitute, or guess a sound that is not available in the library.
+
+## Sound Effect Rules
+
+Use SFX only when an event actually occurs.
+
+Examples:
+
+- door opens
+- footsteps
+- glass breaking
+- phone ringing
+- gunshot
+- vehicle
+- applause
+
+Never repeat the exact same SFX unnecessarily.
+
+If multiple sounds naturally occur at the same time, they may overlap.
+
+## Background Music Rules
+
+BGM should enhance emotion.
+
+Possible emotions include:
+
+- suspense
+- emotional
+- horror
+- comedy
+- romance
+- inspirational
+- action
+
+Background music may span multiple transcript blocks.
+
+Avoid unnecessary BGM changes.
+
+If the same BGM should continue, create one long segment instead of several short ones.
+
+## Duration Rules
+
+The "end_time" specifies when playback must stop.
+
+The playback engine will automatically stop the audio at "end_time", even if the original audio file is longer.
+
+You do not need to match the original audio duration unless looping is required.
+
+## Looping Rules
+
+Every output object must include:
+
+"loop": true
+
+or
+
+"loop": false
+
+If a sound needs to continue longer than the original audio clip, set:
+
+"loop": true
+
+The playback engine will automatically repeat the audio until "end_time".
+
+Example:
+
+A footsteps sound is 2 seconds long, but the character walks for 7 seconds.
+
+{
+  "filename": "footsteps_grass.wav",
+  "start_time": 5.0,
+  "end_time": 12.0,
+  "loop": true,
+  "fade_in": 0,
+  "fade_out": 0
+}
+
+If looping is not required, set:
+
+"loop": false
+
+## Fade Rules
+
+Every output object must include:
+
+"fade_in"
+
+and
+
+"fade_out"
+
+These values are measured in seconds.
+
+If no fade is desired, set the value to:
+
+0
+
+Example:
+
+"fade_in": 0,
+"fade_out": 0
+
+## Timing Rules
+
+Each output object must contain:
+
+- start_time
+- end_time
+
+Times must be in seconds.
+
+Example:
+
+1.2
+5.8
+12.45
+
+Start and end times should align with the transcript.
+
+# Output Format
+
+Return ONLY valid JSON.
+
+No explanation.
+
+No markdown.
+
+No comments.
+
+The output must be a JSON array.
+
+Each object in the array must use exactly this structure:
+
+{
+  "filename": "audio-file.mp3",
+  "start_time": 0.0,
+  "end_time": 3.5,
+  "loop": false,
+  "fade_in": 0,
+  "fade_out": 0
+}
+
+Do not add fields such as "type", "category", "reason", "emotion", or "description".
+
+Do not output sound-library metadata such as "duration_seconds".
+
+Return ONLY the final JSON array.
 `;
-
 
 /**
  * System prompt used when editing an EXISTING source JSON.
@@ -148,6 +326,7 @@ When adding a clip, use the timing and properties explicitly requested. If optio
 "fade_in": 0
 "fade_out": 0
 All time values must be numbers representing seconds.
+
 The final response must contain ONLY valid JSON.
 Do not include Markdown, code fences, explanations, comments, notes, or any text outside the JSON.
 The output must use the exact same array/object structure as the source JSON.
